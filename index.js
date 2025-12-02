@@ -29,6 +29,7 @@ async function run() {
     /* create collection start */
     const db = client.db("toytopia");
     const toysCollection = db.collection("toys");
+    const commentCollection = db.collection("comments");
     /* create collection end */
 
     /* toys APIs start */
@@ -55,28 +56,29 @@ async function run() {
           return res.status(404).send({ message: "Toy not found" });
         }
         res.send(result);
-        
       } catch (error) {
         res.status(500).send({ message: "Invalid ID format" });
       }
     });
 
-    app.get("/toys-by-email", async(req, res) => {
+    app.get("/toys-by-email", async (req, res) => {
       const email = req.query.email;
 
-      if(!email) {
+      if (!email) {
         return res.status(400).send({ message: "Email is required" });
       }
 
-      try{
-        const query = {sellerEmail: email};
-        const result = await toysCollection.find(query).sort({createdAt: -1}).toArray();
-        res.send(result)
-      } 
-      catch(err) {
+      try {
+        const query = { sellerEmail: email };
+        const result = await toysCollection
+          .find(query)
+          .sort({ createdAt: -1 })
+          .toArray();
+        res.send(result);
+      } catch (err) {
         res.status(500).send({ message: "Something went wrong" });
       }
-    })
+    });
 
     app.post("/toys-upload", async (req, res) => {
       const toysData = req.body;
@@ -85,13 +87,73 @@ async function run() {
       res.send(result);
     });
 
-    app.delete("/toys/:id", async(req, res) => {
+    app.put("/toys/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const updateCar = req.body;
+
+        delete updateCar._id;
+
+        const filter = { _id: new ObjectId(id) };
+
+        const updateDoc = {
+          $set: updateCar,
+        };
+
+        const result = await toysCollection.updateOne(filter, updateDoc);
+
+        if (result.modifiedCount === 1) {
+          return res.send({ success: true, message: "Updated" });
+        }
+
+        return res.send({ success: false, message: "No changes found" });
+      } catch (error) {
+        res.status(500).send({ success: false, message: "Server error" });
+      }
+    });
+
+    app.delete("/toys/:id", async (req, res) => {
       const id = req.params.id;
-      const query = {_id: new ObjectId(id)}
+      const query = { _id: new ObjectId(id) };
       const result = await toysCollection.deleteOne(query);
       res.send(result);
-    })
+    });
     /* toys APIs end */
+
+    /* comments APIs start */
+    app.get("/product-comments/:productId", async (req, res) => {
+      const { productId } = req.params;
+      try {
+        const comments = await commentCollection
+          .find({ productId })
+          .sort({ createdAt: -1 })
+          .toArray();
+        res.send(comments);
+      } catch (err) {
+        res.status(500).send({ error: "Server error" });
+      }
+    });
+
+    app.post("/product-comments", async (req, res) => {
+      const { productId, email, comments } = req.body;
+
+      if (!productId || !email || !comments) {
+        return res.status(400).send({ error: "All fields required" });
+      }
+
+      try {
+        const result = await commentCollection.insertOne({
+          productId,
+          email,
+          comments,
+          createdAt: new Date(),
+        });
+        res.send(result);
+      } catch (err) {
+        res.status(500).send({ error: "Server error" });
+      }
+    });
+    /* comments APIs end */
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
