@@ -61,12 +61,36 @@ async function run() {
       }
     });
 
+    app.get("/toys-by-email", async(req, res) => {
+      const email = req.query.email;
+
+      if(!email) {
+        return res.status(400).send({ message: "Email is required" });
+      }
+
+      try{
+        const query = {sellerEmail: email};
+        const result = await toysCollection.find(query).sort({createdAt: -1}).toArray();
+        res.send(result)
+      } 
+      catch(err) {
+        res.status(500).send({ message: "Something went wrong" });
+      }
+    })
+
     app.post("/toys-upload", async (req, res) => {
       const toysData = req.body;
       toysData.createdAt = new Date();
       const result = await toysCollection.insertOne(toysData);
       res.send(result);
     });
+
+    app.delete("/toys/:id", async(req, res) => {
+      const id = req.params.id;
+      const query = {_id: new ObjectId(id)}
+      const result = await toysCollection.deleteOne(query);
+      res.send(result);
+    })
     /* toys APIs end */
 
     // Send a ping to confirm a successful connection
