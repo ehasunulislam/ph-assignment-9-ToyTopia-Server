@@ -71,6 +71,7 @@ async function run() {
         userEmail,
         productId,
         ...rest,
+        paid: false,
         createdAt: new Date(),
       });
 
@@ -244,13 +245,29 @@ async function run() {
         metadata: {
           productId: paymentInfo.productId,
         },
-        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success`,
+        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?productId=${paymentInfo.productId}`,
         cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
       });
 
       console.log(session);
       res.send({ url: session.url });
     });
+
+    // add-to-cat a pay btn ta paid hobe(update)
+    app.post("/payment-success", async (req, res) => {
+      const { productId, userEmail } = req.body;
+
+      try {
+        const result = await addToCartCollection.updateOne(
+          { _id: new ObjectId(productId), userEmail },
+          { $set: { paid: true } }
+        );
+        res.send({ success: true, result });
+      } catch (err) {
+        res.status(500).send({ message: "Failed to update payment status" });
+      }
+    });
+
     /* Payment APIs end */
 
     // Send a ping to confirm a successful connection
