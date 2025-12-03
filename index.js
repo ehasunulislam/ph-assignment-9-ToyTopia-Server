@@ -5,6 +5,9 @@ require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const port = process.env.PORT || 3000;
 
+// stripe require working: 1
+const stripe = require("stripe")(process.env.STRIPE_SECRET);
+
 // middleware
 app.use(express.json());
 app.use(cors());
@@ -30,7 +33,70 @@ async function run() {
     const db = client.db("toytopia");
     const toysCollection = db.collection("toys");
     const commentCollection = db.collection("comments");
+    const addToCartCollection = db.collection("add-to-cart");
     /* create collection end */
+
+    /* add to cart APIs start */
+    app.get("/add-to-cart/:email", async (req, res) => {
+      const userEmail = req.params.email;
+
+      try {
+        const result = await addToCartCollection.find({ userEmail }).toArray();
+        res.send(result);
+      } catch (err) {
+        console.log(err);
+      }
+    });
+
+    // get apIs for single product payment
+    app.get("/add-to-cart/item/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await addToCartCollection.findOne(query);
+      res.send(result);
+    });
+
+    app.post("/add-to-cart", async (req, res) => {
+      const { userEmail, productId, ...rest } = req.body;
+      const existing = await addToCartCollection.findOne({
+        userEmail,
+        productId,
+      });
+
+      if (existing) {
+        return res.status(400).send({ message: "Product already in cart" });
+      }
+
+      const result = await addToCartCollection.insertOne({
+        userEmail,
+        productId,
+        ...rest,
+        createdAt: new Date(),
+      });
+
+      res.send(result);
+    });
+
+    app.delete("/add-to-cart/:email/:productId", async (req, res) => {
+      const { email, productId } = req.params;
+
+      try {
+        const result = await addToCartCollection.deleteOne({
+          userEmail: email,
+          productId: productId,
+        });
+
+        if (result.deletedCount === 0) {
+          return res.status(404).send({ message: "Cart item not found" });
+        }
+
+        res.send({ message: "Cart item removed successfully" });
+      } catch (err) {
+        console.log(err);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+    /* add to cart APIs end */
 
     /* toys APIs start */
     app.get("/toys-home", async (req, res) => {
@@ -154,6 +220,38 @@ async function run() {
       }
     });
     /* comments APIs end */
+
+    /* Payment APIs start (stripe payment working: 2) */
+    app.post("/create-checkout-session", async (req, res) => {
+      const paymentInfo = req.body;
+      const amount = parseInt(paymentInfo.price) * 100;
+
+      const session = await stripe.checkout.sessions.create({
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              unit_amount: amount,
+              product_data: {
+                name: paymentInfo.toyName,
+              },
+            },
+            quantity: 1,
+          },
+        ],
+        customer_email: paymentInfo.userEmail,
+        mode: "payment",
+        metadata: {
+          productId: paymentInfo.productId,
+        },
+        success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success`,
+        cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancelled`,
+      });
+
+      console.log(session);
+      res.send({ url: session.url });
+    });
+    /* Payment APIs end */
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
